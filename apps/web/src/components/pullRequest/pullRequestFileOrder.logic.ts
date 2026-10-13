@@ -195,3 +195,22 @@ export function orderDiffFiles(
 
   return [...orderedSource, ...orderedTests, ...orderedGenerated].map((path) => byPath.get(path)!);
 }
+
+/**
+ * `orderDiffFiles` for a slice already ordered once, held against the parsed files it came from.
+ *
+ * The code tab orders each loaded slice on its own, so a slice arriving should order only itself
+ * rather than every slice already on screen. A re-parse for a theme, the whitespace setting or a
+ * refreshed patch brings a new array, and with it a fresh order. The parsed array is never
+ * reordered in place: its positions pair each file with its source file.
+ */
+export function orderDiffFilesOnce(
+  files: ReadonlyArray<FileDiffMetadata>,
+  ordered: WeakMap<ReadonlyArray<FileDiffMetadata>, ReadonlyArray<FileDiffMetadata>>,
+): ReadonlyArray<FileDiffMetadata> {
+  const cached = ordered.get(files);
+  if (cached) return cached;
+  const next = orderDiffFiles(files);
+  ordered.set(files, next);
+  return next;
+}

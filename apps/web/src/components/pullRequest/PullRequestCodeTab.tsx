@@ -1,4 +1,9 @@
-import type { CodeViewItem, DiffLineAnnotation, SelectedLineRange } from "@pierre/diffs";
+import type {
+  CodeViewItem,
+  DiffLineAnnotation,
+  FileDiffMetadata,
+  SelectedLineRange,
+} from "@pierre/diffs";
 import type { CodeViewDiffItem, CodeViewHandle } from "@pierre/diffs/react";
 import type {
   EnvironmentId,
@@ -34,7 +39,7 @@ import { useTheme } from "~/hooks/useTheme";
 import { areAllDiffFilesCollapsed } from "~/lib/diffCollapse";
 import { pullRequestFindingKey, type PullRequestFinding } from "./pullRequestDetail.logic";
 import { canEditPullRequestComment, canResolvePullRequestThread } from "./pullRequestEditing.logic";
-import { orderDiffFiles } from "./pullRequestFileOrder.logic";
+import { orderDiffFilesOnce } from "./pullRequestFileOrder.logic";
 import {
   buildFileDiffRenderKey,
   fnv1a32,
@@ -246,6 +251,9 @@ function PullRequestCodeTab({
     readonly slices: ReadonlyArray<DiffSlice>;
   }>({ key: "", cursor: null, slices: NO_SLICES });
   const parseCache = useRef(new Map<string, RenderablePatch>());
+  const [orderedFiles] = useState(
+    () => new WeakMap<ReadonlyArray<FileDiffMetadata>, ReadonlyArray<FileDiffMetadata>>(),
+  );
   const [viewer, setViewer] = useState<CodeViewHandle<ReviewAnnotationGroup, undefined> | null>(
     null,
   );
@@ -394,13 +402,14 @@ function PullRequestCodeTab({
     [loadedSlices, resolvedTheme, scopeKey, ignoreWhitespace],
   );
   // Ordered within a slice rather than across them: ordering the accumulated set would let a late
-  // slice push a file the reader is part way through further down the page.
+  // slice push a file the reader is part way through further down the page. Each slice's order is
+  // held against its parse, so a slice arriving orders only itself.
   const files = useMemo(
     () =>
       parsedSlices.flatMap((parsed) =>
-        parsed?.kind === "files" ? orderDiffFiles(parsed.files) : [],
+        parsed?.kind === "files" ? orderDiffFilesOnce(parsed.files, orderedFiles) : [],
       ),
-    [parsedSlices],
+    [parsedSlices, orderedFiles],
   );
   const filePaths = useMemo(() => files.map((file) => resolveFileDiffPath(file)), [files]);
   // Offered under a commit scope as well as from the whole change, because reading a change one

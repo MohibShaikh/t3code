@@ -1,7 +1,7 @@
 import type { FileDiffMetadata } from "@pierre/diffs";
 import { describe, expect, it } from "vite-plus/test";
 
-import { orderDiffFiles } from "./pullRequestFileOrder.logic";
+import { orderDiffFiles, orderDiffFilesOnce } from "./pullRequestFileOrder.logic";
 
 /** Only the path and the patch's own lines matter here; the viewer fills the rest in. */
 function file(name: string, additionLines: ReadonlyArray<string> = []): FileDiffMetadata {
@@ -160,5 +160,40 @@ describe("orderDiffFiles", () => {
       file("yarn.lock"),
     ];
     expect(order(files)).toEqual(order(files.toReversed()));
+  });
+});
+
+describe("orderDiffFilesOnce", () => {
+  it("keeps a loaded slice's order when another slice arrives", () => {
+    const ordered = new WeakMap<ReadonlyArray<FileDiffMetadata>, ReadonlyArray<FileDiffMetadata>>();
+    const first = [
+      file("src/a.ts", ['import { b } from "./b";']),
+      file("src/a.test.ts"),
+      file("src/b.ts"),
+    ];
+    const firstOrder = orderDiffFilesOnce(first, ordered);
+    orderDiffFilesOnce([file("src/c.ts")], ordered);
+
+    expect(orderDiffFilesOnce(first, ordered)).toBe(firstOrder);
+    expect(firstOrder.map((entry) => entry.name)).toEqual([
+      "src/b.ts",
+      "src/a.ts",
+      "src/a.test.ts",
+    ]);
+  });
+
+  it("orders a re-parsed slice afresh and leaves the parsed files in place", () => {
+    const ordered = new WeakMap<ReadonlyArray<FileDiffMetadata>, ReadonlyArray<FileDiffMetadata>>();
+    const parsed = [file("src/a.ts", ['import { b } from "./b";']), file("src/b.ts")];
+    const positions = [...parsed];
+    orderDiffFilesOnce(parsed, ordered);
+    const reparsed = [file("src/a.ts"), file("src/b.ts", ['import { a } from "./a";'])];
+
+    expect(orderDiffFilesOnce(reparsed, ordered).map((entry) => entry.name)).toEqual([
+      "src/a.ts",
+      "src/b.ts",
+    ]);
+    // The code tab pairs each parsed file with its source file by position.
+    expect(parsed.every((entry, index) => entry === positions[index])).toBe(true);
   });
 });
